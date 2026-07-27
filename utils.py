@@ -1,27 +1,34 @@
-import cv2
-import face_recognition
-import numpy as np
+import os
+from deepface import DeepFace
 
 def recognize_face_from_frame(frame, students):
     """
-    Takes an OpenCV frame and a list of Student objects from SQLAlchemy,
-    returns the matched Student object or None.
+    Saves the incoming frame temporarily and verifies it against registered students.
     """
-    # Resize frame for faster processing
-    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-    rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+    temp_path = "temp_scan.jpg"
+    import cv2
+    cv2.imwrite(temp_path, frame)
 
-    face_locations = face_recognition.face_locations(rgb_small_frame)
-    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+    matched_student = None
+    for student in students:
+        if not os.path.exists(student.image_path):
+            continue
+        try:
+            # Compare live frame against the student's reference image
+            result = DeepFace.verify(
+                img1_path=temp_path, 
+                img2_path=student.image_path, 
+                enforce_detection=False,
+                model_name="VGG-Face"
+            )
+            if result["verified"]:
+                matched_student = student
+                break
+        except Exception as e:
+            print(f"Error checking student {student.name}: {e}")
 
-    if not face_encodings:
-        return None
+    # Clean up temp image
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
 
-    for face_encoding in face_encodings:
-        for student in students:
-            # Compare database encoding with current face encoding
-            match = face_recognition.compare_faces([student.face_encoding], face_encoding, tolerance=0.6)
-            if match[0]:
-                return student
-                
-    return None
+    return matched_student
